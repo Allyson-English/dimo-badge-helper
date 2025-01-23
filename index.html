@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DIMO Badge Helper</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./badgehelper.css" />
+    <script charset="utf-8" src="https://cdn.ethers.io/scripts/ethers-v4.min.js" type="text/javascript"></script>
+  </head>
+  <body>
+    <div class="modal" id="walletModal">
+      <h2>Connect Your Wallet</h2>
+      <p>To make a new badge, connect your MetaMask wallet.</p>
+      <button id="connectWallet">Connect Wallet</button>
+    </div>
+
+    <div class="container">
+      <span id="racecar" class="racecar">🏎️</span>
+      <div class="title">✨DIMO BADGE CENTER✨</div>
+      <div class="menu">
+        <a href="#start" id="start"
+          >1. Connect Your Wallet
+          <span id="checkmark1" class="checkmark">✔</span>
+        </a>
+        <a href="#create" id="create">2. Create Your Badge</a>
+        <div class="tooltip">
+          Vehicle Badge
+          <label class="toggle">
+            <input type="checkbox" id="toggleBadge" />
+            <span class="slider"></span>
+          </label>
+          User Badge
+          <span class="tooltiptext"
+            >A "Vehicle Badge" must be sent to a specific vehicle token ID <br /><br />A "User Badge" can be sent to a
+            wallet address.</span
+          >
+        </div>
+        <p id="txLink" style="display: none">Link To Your Badge</p>
+        <div class="form-group">
+          <input type="text" id="badgeName" placeholder="Badge Name" />
+        </div>
+        <div class="form-group">
+          <input type="text" id="badgeSymbol" placeholder="Badge Symbol" />
+        </div>
+        <div class="form-group">
+          <input type="text" id="ipfsAddress" placeholder="IPFS Address" />
+        </div>
+        <a id="button3">3. Send Badges to Friends!</a>
+
+        <div class="overlay" id="overlay"></div>
+
+        <div class="popup" id="popup">
+          <div class="description" id="description"></div>
+          <span class="close" id="popupClose"><br />&times;</span>
+          <br /><br />
+          <div id="contractAddress">Contract Address</div>
+          <input type="text" id="badgeAddress" placeholder="Your Badge Address" />
+          <br /><br />
+          <div id="popupContent"></div>
+          <br /><br />
+          <button id="submitPopup">Submit</button>
+        </div>
+      </div>
+    </div>
+    <script type="module">
+      import { ethers } from 'https://cdn.jsdelivr.net/npm/ethers/dist/ethers.esm.js';
+
+      // constants
+      const DIMO_TOKEN_ADDR_AMOY = '0x21cFE003997fB7c2B3cfe5cf71e7833B7B2eCe10';
+      const DIMO_TOKEN_ADDR_POLYGON = '0xe261d618a959afffd53168cd07d12e37b26761db';
+      const DIMO_BADGE_FACTORY_ADDR = '0x3955bC40B0Cc130B6a30c312E815E3C7c7D251e4';
+      const PROXY_ADDRESS = '0x1f0c89c1D52AC3239EBcC0ce00220C2a984926Dc';
+      const DIMO_VEHICLE_TOKEN_ADDR_POLYGON = '0xbA5738a18d83D41847dfFbDC6101d37C69c9B0cF';
+      const DIMO_VEHICLE_TOKEN_ADDR_AMOY = '0x45fbCD3ef7361d156e8b16F5538AE36DEdf61Da8';
+      const FUNCTION_SIGNATURE_INITIALIZE_DIMO_USER_BADGE = 'initialize(string,string,string,address,address)';
+      const ENCODE_PARAMS_INITIALIZE_DIMO_USER_BADGE = ['string', 'string', 'string', 'address', 'address'];
+      const FUNCTION_SIGNATURE_ISSUE_BADGE = 'issueBadge(address)';
+      const ENCODE_PARAMS_ISSUE_BADGE = ['address'];
+      const COMPUTE_ADDRESS_FUNCTION_SIGNATURE = 'computeAddress(address)';
+      const POLYGONSCAN = 'https://polygonscan.com/tx/';
+      const AMOY_POLYGONSCAN = 'https://amoy.polygonscan.com/tx/';
+      let CHAIN_ID = 0;
+      const POLYGON_MAINNET = 0x89;
+
+      // elements
+      const connectYourWallet = document.getElementById('start');
+      const connectWalletModal = document.getElementById('walletModal');
+      const connectWalletSubmit = document.getElementById('connectWallet');
+      const submitButton = document.getElementById('submitTransaction');
+      const makeBadgeButton = document.getElementById('create');
+      const badgeCreated = document.getElementById('txLink');
+      const toggleLabel = document.getElementById('toggleLabel');
+
+      // actions
+      connectYourWallet.addEventListener('click', (e) => {
+        e.preventDefault();
+        connectWalletModal.style.display = 'block';
+      });
+
+      connectWalletSubmit.addEventListener('click', async () => {
+        if (window.ethereum) {
+          try {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            alert(`Connected wallet: ${accounts[0]}`);
+            connectWalletModal.style.display = 'none';
+            document.getElementById('checkmark1').style.display = 'inline';
+            CHAIN_ID = await window.ethereum.request({ method: 'eth_chainId' });
+          } catch (error) {
+            alert('Failed to connect wallet: ' + error.message);
+          }
+        } else {
+          alert('MetaMask not detected. Please install MetaMask and try again.');
+        }
+      });
+
+      makeBadgeButton.addEventListener('click', async () => {
+        const badgeNameInput = document.getElementById('badgeName');
+        const badgeSymbolInput = document.getElementById('badgeSymbol');
+        const ipfsAddressInput = document.getElementById('ipfsAddress');
+
+        const badgeName = badgeNameInput.value;
+        const badgeSymbol = badgeSymbolInput.value;
+        const ipfsAddress = ipfsAddressInput.value;
+
+        if (!badgeName || !badgeSymbol || !ipfsAddress) {
+          alert('Please complete all fields.');
+          return;
+        }
+
+        if (window.ethereum) {
+          try {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const fromAddress = accounts[0];
+
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            const signer = provider.getSigner();
+
+            const tokenAddr = CHAIN_ID == POLYGON_MAINNET ? DIMO_TOKEN_ADDR_POLYGON : DIMO_TOKEN_ADDR_AMOY;
+            const params = [
+              badgeName, // Badge Name
+              badgeSymbol, // Badge symbol
+              ipfsAddress, // Token URI
+              tokenAddr, // DIMO Token Address
+            ];
+
+            if (toggleLabel == 'VehicleBadge') {
+              const vehicleTokenAddr =
+                CHAIN_ID == POLYGON_MAINNET ? DIMO_VEHICLE_TOKEN_ADDR_POLYGON : DIMO_VEHICLE_TOKEN_ADDR_AMOY;
+              params.push(vehicleTokenAddr);
+            }
+
+            params.push(fromAddress);
+            const functionSelector = ethers.utils.id(FUNCTION_SIGNATURE_INITIALIZE_DIMO_USER_BADGE).slice(0, 10);
+            const abiCoder = new ethers.utils.AbiCoder();
+            const encodedData = abiCoder.encode(ENCODE_PARAMS_INITIALIZE_DIMO_USER_BADGE, params);
+            const initData = functionSelector + encodedData.slice(2);
+
+            const iface = new ethers.utils.Interface([
+              {
+                inputs: [
+                  {
+                    internalType: 'string',
+                    name: '_badgeName',
+                    type: 'string',
+                  },
+                  {
+                    internalType: 'bytes',
+                    name: 'initData',
+                    type: 'bytes',
+                  },
+                  {
+                    internalType: 'address',
+                    name: '_badgeProxyImplementation',
+                    type: 'address',
+                  },
+                ],
+                name: 'registerBadge',
+                outputs: [],
+                stateMutability: 'nonpayable',
+                type: 'function',
+              },
+            ]);
+            // Send transaction
+            const txParams = {
+              from: fromAddress,
+              to: DIMO_BADGE_FACTORY_ADDR, // Badge Factory
+              value: '0x0',
+              data: iface.encodeFunctionData('registerBadge', [badgeName, initData, PROXY_ADDRESS]),
+            };
+
+            const txHash = await window.ethereum.request({
+              method: 'eth_sendTransaction',
+              params: [txParams],
+            });
+
+            const explorer = CHAIN_ID == POLYGON_MAINNET ? POLYGONSCAN : AMOY_POLYGONSCAN;
+            badgeCreated.href = explorer + txHash;
+          } catch (error) {
+            console.log('ERROR: ', error);
+          }
+        } else {
+          console.log('MetaMask not detected. Please install MetaMask and try again.');
+        }
+      });
+
+      document.getElementById('toggleBadge').addEventListener('change', (event) => {
+        if (event.target.checked) {
+          toggleLabel.textContent = 'User Badge';
+        } else {
+          toggleLabel.textContent = 'Vehicle Badge';
+        }
+      });
+
+      document.getElementById('button3').addEventListener('click', () => {
+        const popup = document.getElementById('popup');
+        const overlay = document.getElementById('overlay');
+        const popupContent = document.getElementById('popupContent');
+        const description = document.getElementById('description');
+
+        const isUserBadge = document.getElementById('toggleBadge').checked;
+
+        popupContent.innerHTML = '';
+
+        description.innerHTML = isUserBadge
+          ? 'Enter one address in each box.'
+          : 'Enter vehicle owner address and vehicle token id as:<br/> ADDRESS,TOKEN_ID';
+
+        for (let i = 0; i < 1; i++) {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.placeholder = `Address ${i + 1}`;
+          popupContent.appendChild(input);
+        }
+
+        popup.style.display = 'block';
+        overlay.style.display = 'block';
+      });
+
+      document.getElementById('popupClose').addEventListener('click', () => {
+        document.getElementById('popup').style.display = 'none';
+        document.getElementById('overlay').style.display = 'none';
+      });
+
+      document.getElementById('submitPopup').addEventListener('click', async () => {
+        const popupContent = document.getElementById('popupContent');
+        const inputs = popupContent.querySelectorAll('input');
+        const values = Array.from(inputs)
+          .map((input) => input.value)
+          .filter((value) => value.trim() !== '');
+
+        console.log('Collected Input Values:', values);
+
+        if (window.ethereum) {
+          try {
+            const badgeAddress = document.getElementById('badgeAddress');
+            console.log('Badge Address: ', badgeAddress.value);
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const fromAddress = accounts[0];
+
+            const values = Array.from(inputs)
+              .map((input) => input.value)
+              .filter((value) => value.trim() !== '');
+
+            const badgeAddr = badgeAddress.value;
+            console.log('Badge Address: ', badgeAddr);
+            const iface = new ethers.utils.Interface([
+              {
+                inputs: [
+                  {
+                    internalType: 'address',
+                    name: '_sendTo',
+                    type: 'address',
+                  },
+                ],
+                name: 'issueBadge',
+                outputs: [],
+                stateMutability: 'nonpayable',
+                type: 'function',
+              },
+            ]);
+            console.log('about to make tx params');
+
+            const txParams = {
+              from: fromAddress,
+              to: badgeAddr,
+              value: '0x0',
+              data: iface.encodeFunctionData('issueBadge', [values[0]]),
+            };
+
+            console.log('txParams: ', txParams);
+            const txHash = await window.ethereum.request({
+              method: 'eth_sendTransaction',
+              params: [txParams],
+            });
+
+            alert(`Transaction sent! Hash: ${txHash}`);
+            console.log('txHash: ', txHash);
+          } catch (error) {
+            console.log('ERROR: ', error);
+          }
+        } else {
+          alert('MetaMask not detected. Please install MetaMask and try again.');
+        }
+      });
+    </script>
+  </body>
+</html>
