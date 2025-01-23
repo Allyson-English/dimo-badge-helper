@@ -133,9 +133,6 @@
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             const fromAddress = accounts[0];
 
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
-            const signer = provider.getSigner();
-
             const tokenAddr = CHAIN_ID == POLYGON_MAINNET ? DIMO_TOKEN_ADDR_POLYGON : DIMO_TOKEN_ADDR_AMOY;
             const params = [
               badgeName, // Badge Name
@@ -254,7 +251,8 @@
         if (window.ethereum) {
           try {
             const badgeAddress = document.getElementById('badgeAddress');
-            console.log('Badge Address: ', badgeAddress.value);
+            const badgeAddr = badgeAddress.value;
+
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             const fromAddress = accounts[0];
 
@@ -262,8 +260,6 @@
               .map((input) => input.value)
               .filter((value) => value.trim() !== '');
 
-            const badgeAddr = badgeAddress.value;
-            console.log('Badge Address: ', badgeAddr);
             const iface = new ethers.utils.Interface([
               {
                 inputs: [
@@ -279,22 +275,20 @@
                 type: 'function',
               },
             ]);
-            console.log('about to make tx params');
 
-            const txParams = {
+            const issueBadgeTxParams = {
               from: fromAddress,
               to: badgeAddr,
               value: '0x0',
               data: iface.encodeFunctionData('issueBadge', [values[0]]),
             };
 
-            console.log('txParams: ', txParams);
-            const txHash = await window.ethereum.request({
+            const issueBadgeTxHash = await window.ethereum.request({
               method: 'eth_sendTransaction',
-              params: [txParams],
+              params: [issueBadgeTxParams],
             });
 
-            alert(`Transaction sent! Hash: ${txHash}`);
+            alert(`Transaction sent! Hash: ${issueBadgeTxHash}`);
             console.log('txHash: ', txHash);
           } catch (error) {
             console.log('ERROR: ', error);
